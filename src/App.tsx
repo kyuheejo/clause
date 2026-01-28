@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Agentation } from "agentation";
 import { LeftPanel } from "./components/LeftPanel";
 import { CenterPanel } from "./components/CenterPanel";
 import { RightPanel } from "./components/RightPanel";
@@ -155,6 +156,7 @@ function App() {
           onRemoveChip={handleRemoveChip}
         />
       </div>
+      <Agentation />
     </div>
   );
 }
