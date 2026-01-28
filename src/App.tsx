@@ -3,14 +3,23 @@ import { LeftPanel } from "./components/LeftPanel";
 import { CenterPanel } from "./components/CenterPanel";
 import { RightPanel } from "./components/RightPanel";
 
+// Default working directory for development
+const DEFAULT_ROOT_PATH = "/Users/kyuheejo/Documents/clause-test";
+
 function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [rootPath] = useState(DEFAULT_ROOT_PATH);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle("dark", !darkMode);
+  };
+
+  const handleSelectFile = (path: string) => {
+    setActiveFile(path);
   };
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -34,6 +43,9 @@ function App() {
   const textMuted = darkMode ? "text-gray-400" : "text-gray-500";
   const hoverBg = darkMode ? "hover:bg-gray-800" : "hover:bg-gray-100";
 
+  // Extract folder name from root path for display
+  const folderName = rootPath.split("/").pop() || "Documents";
+
   return (
     <div className={`h-screen w-full flex flex-col ${darkMode ? "bg-[#1a1a1a] text-gray-200" : "bg-white text-gray-900"}`}>
       {/* Title Bar */}
@@ -50,7 +62,7 @@ function App() {
             <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
           </div>
           <span className="text-sm font-medium">Clause</span>
-          <span className={`text-sm ${textMuted}`}>— ~/Documents</span>
+          <span className={`text-sm ${textMuted}`}>— ~/{folderName}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* Toggle left panel */}
@@ -86,8 +98,14 @@ function App() {
 
       {/* Main content with three panels */}
       <div className="flex flex-1 overflow-hidden">
-        <LeftPanel isOpen={leftPanelOpen} darkMode={darkMode} />
-        <CenterPanel darkMode={darkMode} />
+        <LeftPanel
+          isOpen={leftPanelOpen}
+          darkMode={darkMode}
+          rootPath={rootPath}
+          activeFile={activeFile}
+          onSelectFile={handleSelectFile}
+        />
+        <CenterPanel darkMode={darkMode} activeFile={activeFile} />
         <RightPanel isOpen={rightPanelOpen} darkMode={darkMode} />
       </div>
     </div>
