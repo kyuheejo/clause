@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { LeftPanel } from "./components/LeftPanel";
 import { CenterPanel } from "./components/CenterPanel";
 import { RightPanel } from "./components/RightPanel";
@@ -39,6 +40,13 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  // Start watching the directory for changes
+  useEffect(() => {
+    invoke("watch_directory", { path: rootPath }).catch((err) => {
+      console.error("Failed to watch directory:", err);
+    });
+  }, [rootPath]);
 
   const textMuted = darkMode ? "text-gray-400" : "text-gray-500";
   const hoverBg = darkMode ? "hover:bg-gray-800" : "hover:bg-gray-100";

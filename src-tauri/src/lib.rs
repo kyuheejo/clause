@@ -1,6 +1,10 @@
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, EventKind};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::sync::mpsc::channel;
+use std::thread;
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -8,6 +12,12 @@ pub struct FileEntry {
     pub path: String,
     pub is_dir: bool,
     pub children: Option<Vec<FileEntry>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileChangeEvent {
+    pub path: String,
+    pub kind: String,
 }
 
 #[tauri::command]
@@ -99,6 +109,53 @@ fn write_file(path: String, content: String) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn watch_directory(path: String, app_handle: AppHandle) -> Result<(), String> {
+    let watch_path = path.clone();
+
+    thread::spawn(move || {
+        let (tx, rx) = channel();
+
+        let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default())
+            .expect("Failed to create watcher");
+
+        watcher
+            .watch(Path::new(&watch_path), RecursiveMode::Recursive)
+            .expect("Failed to watch directory");
+
+        loop {
+            match rx.recv() {
+                Ok(Ok(event)) => {
+                    let kind = match event.kind {
+                        EventKind::Create(_) => "create",
+                        EventKind::Modify(_) => "modify",
+                        EventKind::Remove(_) => "remove",
+                        _ => continue,
+                    };
+
+                    for path in event.paths {
+                        let change_event = FileChangeEvent {
+                            path: path.to_string_lossy().to_string(),
+                            kind: kind.to_string(),
+                        };
+
+                        let _ = app_handle.emit("file-change", change_event);
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Watch error: {:?}", e);
+                }
+                Err(e) => {
+                    eprintln!("Channel error: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -106,7 +163,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_directory,
             read_file,
-            write_file
+            write_file,
+            watch_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
