@@ -71,3 +71,81 @@ body {
 .title-bar input {
   -webkit-app-region: no-drag;
 }
+
+/* TipTap Editor Styles */
+.editor-container .ProseMirror {
+  outline: none;
+  min-height: 200px;
+}
+
+.editor-container .ProseMirror p {
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+.editor-container .ProseMirror h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.editor-container .ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.editor-container .ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.editor-container .ProseMirror ul,
+.editor-container .ProseMirror ol {
+  padding-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.editor-container .ProseMirror li {
+  margin-bottom: 0.25em;
+}
+
+.editor-container .ProseMirror strong {
+  font-weight: 600;
+}
+
+.editor-container .ProseMirror em {
+  font-style: italic;
+}
+
+.editor-container .ProseMirror code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+}
+
+.dark-editor .ProseMirror code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.editor-container .ProseMirror blockquote {
+  border-left: 3px solid var(--border-color);
+  padding-left: 1em;
+  margin-left: 0;
+  margin-bottom: 1em;
+  color: var(--text-muted);
+}
+
+.editor-container .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+}
