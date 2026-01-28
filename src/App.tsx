@@ -7,12 +7,21 @@ import { RightPanel } from "./components/RightPanel";
 // Default working directory for development
 const DEFAULT_ROOT_PATH = "/Users/kyuheejo/Documents/clause-test";
 
+export interface ContextChip {
+  id: string;
+  type: "selection" | "file";
+  text: string;
+  filePath: string | null;
+  preview: string;
+}
+
 function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [rootPath] = useState(DEFAULT_ROOT_PATH);
+  const [contextChips, setContextChips] = useState<ContextChip[]>([]);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -21,6 +30,27 @@ function App() {
 
   const handleSelectFile = (path: string) => {
     setActiveFile(path);
+  };
+
+  const handleAddToContext = (text: string, filePath: string | null) => {
+    const preview = text.length > 50 ? text.substring(0, 50) + "..." : text;
+    const newChip: ContextChip = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      type: "selection",
+      text,
+      filePath,
+      preview,
+    };
+    setContextChips((prev) => [...prev, newChip]);
+
+    // Open Claude panel if it's closed
+    if (!rightPanelOpen) {
+      setRightPanelOpen(true);
+    }
+  };
+
+  const handleRemoveChip = (id: string) => {
+    setContextChips((prev) => prev.filter((chip) => chip.id !== id));
   };
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -113,8 +143,17 @@ function App() {
           activeFile={activeFile}
           onSelectFile={handleSelectFile}
         />
-        <CenterPanel darkMode={darkMode} activeFile={activeFile} />
-        <RightPanel isOpen={rightPanelOpen} darkMode={darkMode} />
+        <CenterPanel
+          darkMode={darkMode}
+          activeFile={activeFile}
+          onAddToContext={handleAddToContext}
+        />
+        <RightPanel
+          isOpen={rightPanelOpen}
+          darkMode={darkMode}
+          contextChips={contextChips}
+          onRemoveChip={handleRemoveChip}
+        />
       </div>
     </div>
   );

@@ -5,10 +5,13 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { FloatingToolbar } from "./FloatingToolbar";
+
 interface EditorProps {
   filePath: string | null;
   darkMode: boolean;
   onLastEdited: (time: Date | null) => void;
+  onAddToContext: (text: string) => void;
 }
 
 interface FileChangeEvent {
@@ -16,7 +19,7 @@ interface FileChangeEvent {
   kind: string;
 }
 
-export function Editor({ filePath, darkMode, onLastEdited }: EditorProps) {
+export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: EditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [externalChange, setExternalChange] = useState(false);
@@ -205,7 +208,7 @@ export function Editor({ filePath, darkMode, onLastEdited }: EditorProps) {
   }
 
   return (
-    <div className={`editor-container ${darkMode ? "dark-editor" : ""}`}>
+    <div className={`editor-container relative ${darkMode ? "dark-editor" : ""}`}>
       {/* External change notification */}
       {externalChange && (
         <div className={`mb-4 p-3 rounded-lg border ${
@@ -235,7 +238,14 @@ export function Editor({ filePath, darkMode, onLastEdited }: EditorProps) {
           </div>
         </div>
       )}
-      <EditorContent editor={editor} />
+      <div className="relative">
+        <FloatingToolbar
+          editor={editor}
+          darkMode={darkMode}
+          onAddToContext={onAddToContext}
+        />
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }

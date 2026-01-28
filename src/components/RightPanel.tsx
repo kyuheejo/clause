@@ -1,15 +1,20 @@
+import { ContextChip } from "../App";
+
 interface RightPanelProps {
   isOpen: boolean;
   darkMode: boolean;
+  contextChips: ContextChip[];
+  onRemoveChip: (id: string) => void;
 }
 
-export function RightPanel({ isOpen, darkMode }: RightPanelProps) {
+export function RightPanel({ isOpen, darkMode, contextChips, onRemoveChip }: RightPanelProps) {
   if (!isOpen) return null;
 
   const sidebarBg = darkMode ? "bg-[#141414]" : "bg-[#f7f7f7]";
   const border = darkMode ? "border-gray-700" : "border-gray-200";
   const textMuted = darkMode ? "text-gray-400" : "text-gray-500";
   const hoverBg = darkMode ? "hover:bg-gray-800" : "hover:bg-gray-100";
+  const chipBg = darkMode ? "bg-gray-800" : "bg-gray-100";
 
   return (
     <div className={`w-96 border-l ${border} flex flex-col ${sidebarBg}`}>
@@ -39,6 +44,30 @@ export function RightPanel({ isOpen, darkMode }: RightPanelProps) {
 
       {/* Input Area */}
       <div className={`p-3 border-t ${border}`}>
+        {/* Context Chips */}
+        {contextChips.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {contextChips.map((chip) => (
+              <div
+                key={chip.id}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${chipBg}`}
+              >
+                <span className="text-indigo-500">📍</span>
+                <span className="max-w-[150px] truncate" title={chip.text}>
+                  "{chip.preview}"
+                </span>
+                <button
+                  onClick={() => onRemoveChip(chip.id)}
+                  className={`ml-1 ${textMuted} hover:text-red-500 transition-colors`}
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className={`flex items-end gap-2 ${darkMode ? "bg-gray-800" : "bg-white"} border ${border} rounded-xl p-2`}>
           <textarea
             placeholder="Ask Claude to edit, research, or explain..."

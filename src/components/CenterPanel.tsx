@@ -4,6 +4,7 @@ import { Editor } from "./Editor";
 interface CenterPanelProps {
   darkMode: boolean;
   activeFile: string | null;
+  onAddToContext: (text: string, filePath: string | null) => void;
 }
 
 function formatTimeAgo(date: Date | null): string {
@@ -20,7 +21,7 @@ function formatTimeAgo(date: Date | null): string {
   return `${Math.floor(seconds / 86400)} days ago`;
 }
 
-export function CenterPanel({ darkMode, activeFile }: CenterPanelProps) {
+export function CenterPanel({ darkMode, activeFile, onAddToContext }: CenterPanelProps) {
   const [lastEdited, setLastEdited] = useState<Date | null>(null);
 
   const editorBg = darkMode ? "bg-[#1e1e1e]" : "bg-[#fafafa]";
@@ -31,6 +32,10 @@ export function CenterPanel({ darkMode, activeFile }: CenterPanelProps) {
 
   // Check if file is markdown
   const isMarkdown = activeFile?.endsWith(".md");
+
+  const handleAddToContext = (text: string) => {
+    onAddToContext(text, activeFile);
+  };
 
   return (
     <div className={`flex-1 flex flex-col ${editorBg} overflow-hidden`}>
@@ -56,6 +61,7 @@ export function CenterPanel({ darkMode, activeFile }: CenterPanelProps) {
               filePath={activeFile}
               darkMode={darkMode}
               onLastEdited={setLastEdited}
+              onAddToContext={handleAddToContext}
             />
           ) : activeFile ? (
             <p className={`${textMuted}`}>
