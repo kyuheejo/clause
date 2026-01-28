@@ -1,12 +1,38 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { LeftPanel } from "./components/LeftPanel";
+import { CenterPanel } from "./components/CenterPanel";
+import { RightPanel } from "./components/RightPanel";
 
 function App() {
   const [darkMode, setDarkMode] = useState(false);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle("dark", !darkMode);
   };
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Cmd+\ to toggle Claude panel (right)
+    if (e.metaKey && e.key === "\\") {
+      e.preventDefault();
+      setRightPanelOpen((prev) => !prev);
+    }
+    // Cmd+B to toggle file tree (left)
+    if (e.metaKey && e.key === "b") {
+      e.preventDefault();
+      setLeftPanelOpen((prev) => !prev);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
+  const textMuted = darkMode ? "text-gray-400" : "text-gray-500";
+  const hoverBg = darkMode ? "hover:bg-gray-800" : "hover:bg-gray-100";
 
   return (
     <div className={`h-screen w-full flex flex-col ${darkMode ? "bg-[#1a1a1a] text-gray-200" : "bg-white text-gray-900"}`}>
@@ -24,31 +50,45 @@ function App() {
             <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
           </div>
           <span className="text-sm font-medium">Clause</span>
-          <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-            — ~/Documents
-          </span>
+          <span className={`text-sm ${textMuted}`}>— ~/Documents</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Toggle left panel */}
+          <button
+            onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              leftPanelOpen ? "bg-indigo-500 text-white" : `${hoverBg} ${textMuted}`
+            }`}
+            title="Toggle file tree (⌘B)"
+          >
+            ⌘B
+          </button>
+          {/* Dark mode toggle */}
           <button
             onClick={toggleDarkMode}
-            className={`p-1.5 rounded transition-colors ${
-              darkMode ? "hover:bg-gray-800 text-gray-400" : "hover:bg-gray-100 text-gray-500"
-            }`}
+            className={`p-1.5 rounded transition-colors ${hoverBg} ${textMuted}`}
             title="Toggle dark mode"
           >
             {darkMode ? "☀️" : "🌙"}
           </button>
+          {/* Toggle right panel */}
+          <button
+            onClick={() => setRightPanelOpen(!rightPanelOpen)}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              rightPanelOpen ? "bg-indigo-500 text-white" : `${hoverBg} ${textMuted}`
+            }`}
+            title="Toggle Claude panel (⌘\\)"
+          >
+            ⌘\
+          </button>
         </div>
       </div>
 
-      {/* Main content area placeholder */}
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Clause</h1>
-          <p className={`${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-            A writing IDE powered by Claude Code
-          </p>
-        </div>
+      {/* Main content with three panels */}
+      <div className="flex flex-1 overflow-hidden">
+        <LeftPanel isOpen={leftPanelOpen} darkMode={darkMode} />
+        <CenterPanel darkMode={darkMode} />
+        <RightPanel isOpen={rightPanelOpen} darkMode={darkMode} />
       </div>
     </div>
   );
