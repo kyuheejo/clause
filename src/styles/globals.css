@@ -79,8 +79,8 @@ body {
 }
 
 .editor-container .ProseMirror p {
-  margin-bottom: 1em;
-  line-height: 1.7;
+  margin-bottom: 0.75em;
+  line-height: 1.35;
 }
 
 .editor-container .ProseMirror h1 {
@@ -110,8 +110,21 @@ body {
   margin-bottom: 1em;
 }
 
+.editor-container .ProseMirror ul {
+  list-style-type: disc;
+}
+
+.editor-container .ProseMirror ol {
+  list-style-type: decimal;
+}
+
 .editor-container .ProseMirror li {
   margin-bottom: 0.25em;
+  line-height: 1.35;
+}
+
+.editor-container .ProseMirror li p {
+  margin: 0;
 }
 
 .editor-container .ProseMirror strong {
@@ -148,4 +161,60 @@ body {
   color: var(--text-muted);
   pointer-events: none;
   height: 0;
+}
+
+/* Table Styles */
+.editor-container .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  overflow: hidden;
+}
+
+.editor-container .ProseMirror th,
+.editor-container .ProseMirror td {
+  border: 1px solid var(--border-color);
+  padding: 0.5em 0.75em;
+  text-align: left;
+  vertical-align: top;
+  position: relative;
+}
+
+.editor-container .ProseMirror th {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.dark-editor .ProseMirror th {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.editor-container .ProseMirror th p,
+.editor-container .ProseMirror td p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.editor-container .ProseMirror .selectedCell {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.editor-container .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  cursor: col-resize;
+}
+
+/* Hide scrollbar for tab bar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

@@ -23,6 +23,15 @@ src-tauri/Cargo.lock
 *.swo
 *~
 
+# AI Tools Config
+.agent/
+.agents/
+.claude/
+.codex/
+.gemini/
+.opencode/
+.windsurf/
+
 # OS
 .DS_Store
 Thumbs.db

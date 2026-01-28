@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Agentation } from "agentation";
 import { LeftPanel } from "./components/LeftPanel";
 import { CenterPanel } from "./components/CenterPanel";
@@ -14,6 +15,8 @@ export interface ContextChip {
   text: string;
   filePath: string | null;
   preview: string;
+  fileName: string;
+  lineRange: string;
 }
 
 function App() {
@@ -21,8 +24,22 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [rootPath] = useState(DEFAULT_ROOT_PATH);
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [rootPath, setRootPath] = useState(DEFAULT_ROOT_PATH);
   const [contextChips, setContextChips] = useState<ContextChip[]>([]);
+
+  const handleOpenFolder = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Open Folder",
+    });
+    if (selected && typeof selected === "string") {
+      setRootPath(selected);
+      setActiveFile(null);
+      setOpenTabs([]);
+    }
+  };
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -31,16 +48,48 @@ function App() {
 
   const handleSelectFile = (path: string) => {
     setActiveFile(path);
+    // Add to open tabs if not already open
+    setOpenTabs((prev) => {
+      if (!prev.includes(path)) {
+        return [...prev, path];
+      }
+      return prev;
+    });
   };
 
-  const handleAddToContext = (text: string, filePath: string | null) => {
+  const handleCloseTab = useCallback((path: string) => {
+    setOpenTabs((prev) => {
+      const newTabs = prev.filter((tab) => tab !== path);
+      // If closing the active tab, switch to another tab
+      if (activeFile === path) {
+        const closingIndex = prev.indexOf(path);
+        if (newTabs.length > 0) {
+          // Prefer the tab to the left, otherwise the first tab
+          const newActiveIndex = Math.min(closingIndex, newTabs.length - 1);
+          setActiveFile(newTabs[newActiveIndex]);
+        } else {
+          setActiveFile(null);
+        }
+      }
+      return newTabs;
+    });
+  }, [activeFile]);
+
+  const handleSelectTab = (path: string) => {
+    setActiveFile(path);
+  };
+
+  const handleAddToContext = (text: string, filePath: string | null, lineRange?: string) => {
     const preview = text.length > 50 ? text.substring(0, 50) + "..." : text;
+    const fileName = filePath ? filePath.split("/").pop() || "unknown" : "selection";
     const newChip: ContextChip = {
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       type: "selection",
       text,
       filePath,
       preview,
+      fileName,
+      lineRange: lineRange || "snippet",
     };
     setContextChips((prev) => [...prev, newChip]);
 
@@ -65,7 +114,14 @@ function App() {
       e.preventDefault();
       setLeftPanelOpen((prev) => !prev);
     }
-  }, []);
+    // Cmd+W to close active tab
+    if (e.metaKey && e.key === "w") {
+      e.preventDefault();
+      if (activeFile) {
+        handleCloseTab(activeFile);
+      }
+    }
+  }, [activeFile, handleCloseTab]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -93,15 +149,21 @@ function App() {
           darkMode ? "bg-[#141414] border-gray-700" : "bg-[#f7f7f7] border-gray-200"
         }`}
       >
-        <div className="flex items-center gap-2">
-          {/* Traffic light buttons placeholder (handled by macOS) */}
-          <div className="flex gap-1.5 mr-4">
-            <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
-            <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
-            <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
-          </div>
+        <div className="flex items-center ml-16">
           <span className="text-sm font-medium">Clause</span>
-          <span className={`text-sm ${textMuted}`}>— ~/{folderName}</span>
+          <button
+            onClick={handleOpenFolder}
+            className={`text-sm ${textMuted} ml-1 ${hoverBg} px-1 rounded cursor-pointer`}
+            title="Click to open different folder"
+          >
+            — {folderName} ▾
+          </button>
+          {activeFile && (
+            <>
+              <span className={`text-sm ${textMuted} ml-1`}>—</span>
+              <span className="text-sm ml-1">{activeFile.split('/').pop()}</span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Toggle left panel */}
@@ -147,6 +209,9 @@ function App() {
         <CenterPanel
           darkMode={darkMode}
           activeFile={activeFile}
+          openTabs={openTabs}
+          onSelectTab={handleSelectTab}
+          onCloseTab={handleCloseTab}
           onAddToContext={handleAddToContext}
         />
         <RightPanel
@@ -154,6 +219,7 @@ function App() {
           darkMode={darkMode}
           contextChips={contextChips}
           onRemoveChip={handleRemoveChip}
+          workingDir={rootPath}
         />
       </div>
       <Agentation />

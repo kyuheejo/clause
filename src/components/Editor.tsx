@@ -2,15 +2,20 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { Markdown } from "tiptap-markdown";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import * as Diff from "diff";
 
 import { FloatingToolbar } from "./FloatingToolbar";
 
 interface EditorProps {
   filePath: string | null;
   darkMode: boolean;
-  onLastEdited: (time: Date | null) => void;
   onAddToContext: (text: string) => void;
 }
 
@@ -19,14 +24,25 @@ interface FileChangeEvent {
   kind: string;
 }
 
-export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: EditorProps) {
+interface DiffChange {
+  id: string;
+  added?: string;
+  removed?: string;
+  value: string;
+  position: number; // Character position in original text
+}
+
+export function Editor({ filePath, darkMode, onAddToContext }: EditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [externalChange, setExternalChange] = useState(false);
+  const [pendingDiffs, setPendingDiffs] = useState<DiffChange[]>([]);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentPathRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
   const lastSaveTimeRef = useRef<number>(0);
+  const lastSavedContentRef = useRef<string>("");
+  const preChangeContentRef = useRef<string>(""); // Content before external change
+  const isLoadingExternalRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -38,6 +54,19 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
       Placeholder.configure({
         placeholder: "Start writing...",
       }),
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      Markdown.configure({
+        html: true,
+        tightLists: true,
+        bulletListMarker: "-",
+        transformPastedText: true,
+        transformCopiedText: true,
+      }),
     ],
     content: "",
     editorProps: {
@@ -46,14 +75,20 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
       },
     },
     onUpdate: ({ editor }) => {
+      // Don't trigger auto-save when loading external changes
+      if (isLoadingExternalRef.current) return;
+
       // Debounced auto-save
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
 
       saveTimeoutRef.current = setTimeout(() => {
-        if (currentPathRef.current) {
-          saveFile(currentPathRef.current, editor.getHTML());
+        if (currentPathRef.current && editor) {
+          // Get markdown content using the extension
+          const storage = editor.storage as { markdown?: { getMarkdown: () => string } };
+          const markdown = storage.markdown?.getMarkdown() || editor.getText();
+          saveFile(currentPathRef.current, markdown);
         }
       }, 500);
     },
@@ -62,90 +97,82 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
   const saveFile = useCallback(async (path: string, content: string) => {
     isSavingRef.current = true;
     lastSaveTimeRef.current = Date.now();
-
-    // Convert HTML to plain text/markdown-like format for saving
-    const textContent = content
-      .replace(/<h1[^>]*>/g, "# ")
-      .replace(/<\/h1>/g, "\n\n")
-      .replace(/<h2[^>]*>/g, "## ")
-      .replace(/<\/h2>/g, "\n\n")
-      .replace(/<h3[^>]*>/g, "### ")
-      .replace(/<\/h3>/g, "\n\n")
-      .replace(/<p[^>]*>/g, "")
-      .replace(/<\/p>/g, "\n\n")
-      .replace(/<strong>/g, "**")
-      .replace(/<\/strong>/g, "**")
-      .replace(/<em>/g, "*")
-      .replace(/<\/em>/g, "*")
-      .replace(/<ul>/g, "")
-      .replace(/<\/ul>/g, "\n")
-      .replace(/<li>/g, "- ")
-      .replace(/<\/li>/g, "\n")
-      .replace(/<br\s*\/?>/g, "\n")
-      .replace(/&nbsp;/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    lastSavedContentRef.current = content;
 
     try {
-      await invoke("write_file", { path, content: textContent });
-      onLastEdited(new Date());
+      await invoke("write_file", { path, content });
     } catch (err) {
       console.error("Failed to save file:", err);
     } finally {
-      // Give some time for the file system event to propagate
       setTimeout(() => {
         isSavingRef.current = false;
       }, 100);
     }
-  }, [onLastEdited]);
+  }, []);
 
-  const loadFile = useCallback(async () => {
+  const computeDiffs = useCallback((oldContent: string, newContent: string): DiffChange[] => {
+    const changes = Diff.diffWords(oldContent, newContent);
+    const diffs: DiffChange[] = [];
+    let position = 0;
+
+    changes.forEach((change, index) => {
+      if (change.added || change.removed) {
+        diffs.push({
+          id: `diff-${Date.now()}-${index}`,
+          added: change.added ? change.value : undefined,
+          removed: change.removed ? change.value : undefined,
+          value: change.value,
+          position,
+        });
+      }
+      if (!change.added) {
+        position += change.value.length;
+      }
+    });
+
+    return diffs;
+  }, []);
+
+  const loadFile = useCallback(async (showDiffs = false) => {
     if (!filePath || !editor) {
       return;
     }
 
     setLoading(true);
     setError(null);
-    setExternalChange(false);
     currentPathRef.current = filePath;
 
     try {
-      const content = await invoke<string>("read_file", { path: filePath });
+      const newContent = await invoke<string>("read_file", { path: filePath });
 
-      // Convert markdown to HTML for TipTap
-      const htmlContent = content
-        .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-        .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-        .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>")
-        .replace(/^- (.+)$/gm, "<li>$1</li>")
-        .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-        .replace(/\n\n/g, "</p><p>")
-        .replace(/^(.+)$/gm, (match) => {
-          if (match.startsWith("<")) return match;
-          return `<p>${match}</p>`;
-        })
-        .replace(/<p><\/p>/g, "")
-        .replace(/<p>(<h[123]>)/g, "$1")
-        .replace(/(<\/h[123]>)<\/p>/g, "$1")
-        .replace(/<p>(<ul>)/g, "$1")
-        .replace(/(<\/ul>)<\/p>/g, "$1");
+      if (showDiffs && lastSavedContentRef.current && lastSavedContentRef.current !== newContent) {
+        // Store the pre-change content for potential revert
+        preChangeContentRef.current = lastSavedContentRef.current;
+        // Compute diffs between old and new content
+        const diffs = computeDiffs(lastSavedContentRef.current, newContent);
+        if (diffs.length > 0) {
+          setPendingDiffs(diffs);
+        }
+      }
 
-      editor.commands.setContent(htmlContent || "<p></p>");
-      onLastEdited(new Date());
+      // Update content
+      isLoadingExternalRef.current = true;
+      editor.commands.setContent(newContent);
+      lastSavedContentRef.current = newContent;
+      isLoadingExternalRef.current = false;
     } catch (err) {
       setError(String(err));
-      editor.commands.setContent("<p></p>");
+      editor.commands.setContent("");
     } finally {
       setLoading(false);
     }
-  }, [filePath, editor, onLastEdited]);
+  }, [filePath, editor, computeDiffs]);
 
   // Load file content when filePath changes
   useEffect(() => {
     if (currentPathRef.current !== filePath) {
-      loadFile();
+      setPendingDiffs([]); // Clear diffs when switching files
+      loadFile(false);
     }
   }, [filePath, loadFile]);
 
@@ -154,23 +181,20 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
     const unlisten = listen<FileChangeEvent>("file-change", (event) => {
       const { path, kind } = event.payload;
 
-      // Check if this is the current file
       if (path === currentPathRef.current && kind === "modify") {
-        // Ignore if we just saved (within last 1 second)
         const timeSinceSave = Date.now() - lastSaveTimeRef.current;
         if (isSavingRef.current || timeSinceSave < 1000) {
           return;
         }
-
-        // Show external change notification
-        setExternalChange(true);
+        // Auto-reload and show diffs instead of just showing notification
+        loadFile(true);
       }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [loadFile]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -181,13 +205,52 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
     };
   }, []);
 
-  const handleReload = () => {
-    loadFile();
-  };
+  const handleAcceptAll = useCallback(() => {
+    // Diffs are already applied to the content, just clear them
+    setPendingDiffs([]);
+    // Save the current state
+    if (currentPathRef.current && editor) {
+      const storage = editor.storage as { markdown?: { getMarkdown: () => string } };
+      const markdown = storage.markdown?.getMarkdown() || editor.getText();
+      saveFile(currentPathRef.current, markdown);
+    }
+  }, [editor, saveFile]);
 
-  const handleDismiss = () => {
-    setExternalChange(false);
-  };
+  const handleDenyAll = useCallback(async () => {
+    // Revert to the content before the external change
+    if (currentPathRef.current && editor && preChangeContentRef.current) {
+      isLoadingExternalRef.current = true;
+      editor.commands.setContent(preChangeContentRef.current);
+      isLoadingExternalRef.current = false;
+
+      // Save the reverted content back to file
+      await saveFile(currentPathRef.current, preChangeContentRef.current);
+      lastSavedContentRef.current = preChangeContentRef.current;
+      preChangeContentRef.current = "";
+      setPendingDiffs([]);
+    }
+  }, [editor, saveFile]);
+
+  // Keyboard shortcuts for diffs
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (pendingDiffs.length === 0) return;
+
+      // Cmd+Enter or Cmd+Shift+Enter to Accept All
+      if (e.metaKey && e.key === "Enter") {
+        e.preventDefault();
+        handleAcceptAll();
+      }
+      // Cmd+Backspace to Deny All
+      if (e.metaKey && e.key === "Backspace") {
+        e.preventDefault();
+        handleDenyAll();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pendingDiffs, handleAcceptAll, handleDenyAll]);
 
   const textMuted = darkMode ? "text-gray-400" : "text-gray-500";
 
@@ -209,35 +272,73 @@ export function Editor({ filePath, darkMode, onLastEdited, onAddToContext }: Edi
 
   return (
     <div className={`editor-container relative ${darkMode ? "dark-editor" : ""}`}>
-      {/* External change notification */}
-      {externalChange && (
-        <div className={`mb-4 p-3 rounded-lg border ${
+      {/* Pending diffs notification */}
+      {pendingDiffs.length > 0 && (
+        <div className={`mb-4 p-4 rounded-lg border ${
           darkMode
-            ? "bg-yellow-900/20 border-yellow-700 text-yellow-200"
-            : "bg-yellow-50 border-yellow-200 text-yellow-800"
+            ? "bg-indigo-900/20 border-indigo-700"
+            : "bg-indigo-50 border-indigo-200"
         }`}>
-          <p className="text-sm font-medium">File changed externally</p>
-          <p className="text-xs mt-1 opacity-80">
-            This file was modified outside of Clause.
-          </p>
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={handleReload}
-              className="px-3 py-1 text-xs rounded bg-yellow-600 text-white hover:bg-yellow-700 transition-colors"
-            >
-              Reload
-            </button>
-            <button
-              onClick={handleDismiss}
-              className={`px-3 py-1 text-xs rounded ${
-                darkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-gray-200 hover:bg-gray-300"
-              } transition-colors`}
-            >
-              Keep my version
-            </button>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className={`text-sm font-medium ${darkMode ? "text-indigo-200" : "text-indigo-800"}`}>
+                Claude made {pendingDiffs.length} change{pendingDiffs.length > 1 ? "s" : ""} to this file
+              </p>
+              <p className={`text-xs mt-1 ${darkMode ? "text-indigo-300/70" : "text-indigo-600/70"}`}>
+                Review the changes below
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAcceptAll}
+                className="px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                title="Accept All (⌘Enter)"
+              >
+                <span>✓</span> Accept All
+                <span className="opacity-60 ml-1">⌘↵</span>
+              </button>
+              <button
+                onClick={handleDenyAll}
+                className={`px-3 py-1.5 text-xs font-medium rounded ${
+                  darkMode
+                    ? "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                    : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                } transition-colors flex items-center gap-1`}
+                title="Deny All (⌘⌫)"
+              >
+                <span>✗</span> Deny All
+                <span className="opacity-60 ml-1">⌘⌫</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Show diff summary */}
+          <div className={`text-xs space-y-1 p-2 rounded ${
+            darkMode ? "bg-gray-800/50" : "bg-white/50"
+          }`}>
+            {pendingDiffs.map((diff) => (
+              <div key={diff.id} className="flex items-start gap-2">
+                {diff.removed && (
+                  <span className={`inline-block px-1 rounded ${
+                    darkMode ? "bg-red-900/50 text-red-300" : "bg-red-100 text-red-700"
+                  }`}>
+                    <span className="line-through">{diff.removed.slice(0, 50)}{diff.removed.length > 50 ? "..." : ""}</span>
+                  </span>
+                )}
+                {diff.removed && diff.added && <span className={textMuted}>→</span>}
+                {diff.added && (
+                  <span className={`inline-block px-1 rounded ${
+                    darkMode ? "bg-green-900/50 text-green-300" : "bg-green-100 text-green-700"
+                  }`}>
+                    {diff.added.slice(0, 50)}{diff.added.length > 50 ? "..." : ""}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
+
       <div className="relative">
         <FloatingToolbar
           editor={editor}
